@@ -1,0 +1,134 @@
+Uma vez que temos uma população de interesse, buscamos pelos genomas de parentes próximos à população identificada em nosso dataset de metabarcoding. 
+É importante sempre fazer um bom levantamento bibliográfico, saber detalhes da biogeografia dessa população e a variabilidade intraespecífica já documentada
+na literatura, uma vez que essas características influenciam diretamente na seleção do nosso conjunto de genomas de referência.
+Devido ao tamanho dos arquivos, em função da quantidade de sequências, essas análises costumam ser rodadas em servidor. Na main eu apresento dois templates de "jobs".
+Vou mostrar um exemplo utilizando uma biblioteca Illumina paired-end:
+
+Primeiro baixamos os nossos genomas de referência, então formatamos o dataset de referência e rodamos o primeiro mapeamento:
+>bowtie2-build minha_primeira_referência_genomic.fna minha_primeira_referência_genomic.fna
+>bowtie2 \
+  -p 24   \
+  -x minha_primeira_referência_genomic.fna  \
+  -1 /dir/rawdata_Illumina_L001_R1_001.fastq  \
+  -2 /dir/rawdata_Illumina_L001_R2_001.fastq  \
+  --no-unal   \
+  -S minha_primeira_referência_mapeada.sam
+-p é o número de "threads"
+--no-unal remove informação de reads não mapeadas
+os parâmetros default do Bowtie2 permitem o alinhamento de reads não exatamente iguais.
+
+Agora precisamos extrair nossas reads. 
+Como estamos trabalhando com uma biblioteca paired-end, e o alinhamento concomitante do par de reads é importante pra qualidade dos resultados, é uma boa idéia
+extrair apenas os pares que mapearam. O seguinte comando faz isso:
+>samtools view   \
+  -@ 24   \
+  -hf 0x2   \
+  minha_primeira_referência_mapeada.sam > minha_primeira_referência_mapeada_concordant.sam
+  
+Agora convertemos de .sam para .bam e extraímos nossos reads mapeados e pareados:
+>samtools view   \
+   -@ 24   \
+   -b  \
+  minha_primeira_referência_mapeada_concordant.sam > minha_primeira_referência_mapeada_concordant.bam
+  
+>samtools fastq  \
+    -@ 24   \
+    -1 minha_primeira_referência_mapeada_R1.fq  \
+    -2 minha_primeira_referência_mapeada_R2.fq  \
+    minha_primeira_referência_mapeada_concordant.bam
+    
+É provável que sua espécie de interesse possua várias cepas, variantes e parentes muito próximos. Realizamos o procedimento acima para cada uma.
+
+Depois de ter rodado o mapeamento para cada um dos meus genomas de interesse, podemos montar nossos contigs tanto individualmente, quanto concatenando todos
+os arquivos de reads mapeadas gerados, criando assim um novo dataset de reads que alinharam com a minha população de interesse como um todo.
+Vou mostrar como eu costumo fazer essa concatenação:
+Digamos que eu adotei 3 genomas de referência:
+minha_primeira_referência_mapeada_R1.fq/minha_primeira_referência_mapeada_R2.fq
+minha_segunda_referência_mapeada_R1.fq/minha_segunda_referência_mapeada_R2.fq
+minha_terceira_referência_mapeada_R1.fq/minha_terceira_referência_mapeada_R2.fq
+
+Eu vou concatenar todos os arquivos fast R1, e todos os R2:
+>cat minha_primeira_referência_mapeada_R1.fq minha_segunda_referência_mapeada_R1.fq minha_terceira_referência_mapeada_R1.fq > minha_populacao_mapeada_R1.fq
+>cat minha_primeira_referência_mapeada_R2.fq minha_segunda_referência_mapeada_R2.fq minha_terceira_referência_mapeada_R2.fq > minha_populacao_mapeada_R2.fq
+
+Agora é importante lembrar que muitos reads que mapearam para uma cepa/genoma de referência, irão alinhar também em outros, gerando reads duplicados.
+Para remover pares de reads duplicados e corrigir nossos novos datasets R1 e R2, usaremos os seguintes comandos do bbmap:
+>dedupe.sh \
+  in=minha_populacao_mapeada_R1.fq  \
+  ac=f addpairnum=t   \
+  storequality=t  \
+  uniquenames=t   \
+  threads=24  \
+  out=minha_populacao_mapeada_dedupe_R1.fq
+    
+>dedupe.sh \
+  in=minha_populacao_mapeada_R2.fq  \
+  ac=f addpairnum=t   \
+  storequality=t  \
+  uniquenames=t   \
+  threads=24  \
+  out=minha_populacao_mapeada_dedupe_R2.fq
+
+repair.sh   \
+  in1=minha_populacao_mapeada_dedupe_R1.fq  \ 
+  in2=minha_populacao_mapeada_dedupe_R2.fq  \
+  out1=minha_populacao_mapeada_dedupe_fix_R1.fq   \
+  out2=minha_populacao_mapeada_dedupe_fix_R2.fq   \
+  outs=minha_populacao_mapeada_singletons.fq  \
+  threads=24  \
+  repair
+  
+Agora sim, temos nosso novo dataset Illumina paired end, porém apenas com reads que alinharam aos nossos genomas de referência.
+
+Por final, vou mostrar como rodar a montagem desses reads usando o SPAdes.
+Podemos rodar a montagem individualmente para cada referência, ou para nosso dataset concatenado.
+Rodando individualmente, conseguimos montar contigs semelhantes à referência, porém mantendo e apresentando a variabilidade genética da nossa amostra,
+observado nas etapas seguintes através do remapeamento e do SNV calling (chamada de variantes).
+Conseguimos também quantificar a cobertura daquela referência no nosso dataset.
+Rodando com as referências concatenadas, podemos montar contigs semelhantes aos já citados, porém permitindo uma ampliação da informação, gerando contigs
+que podem melhor representar o pan-genoma da nossa população, ou mesmo a descoberta de novos genótipos.
+
+>spades.py  \
+  --careful   \
+  -1 minha_populacao_mapeada_dedupe_fix_R1.fq \
+  -2 minha_populacao_mapeada_dedupe_fix_R2.fq \
+  -s minha_populacao_mapeada_singletons.fq  \
+  -t 24 \
+  -o minha_população_assembly1
+  
+Esse comando vai gerar um novo diretório, chamado 'minha_população_assembly1', e dentro deles encontramos vários arquivos de saída.
+O que vamos usar é o contigs.fasta
+Essa foi a primeira montagem, porém é imprescindível que seja realizado um segundo mapeamento, utilizando nosso rawdata, 
+com o objetivo de verificar a cobertura e profundidade dos nossos contigs recém formados em relação ao nosso dataset original.
+Para rodar esse remapeamento, vamos utilizar o Bowtie2 novamente, porém agora nossa referência são nossos contigs:
+>bowtie2-build minha_população_assembly1/contigs.fasta minha_população_assembly1/contigs.fasta
+>bowtie2 \
+  -p 24   \
+  -x minha_população_assembly1/contigs.fasta  \
+  -1 /dir/rawdata_Illumina_L001_R1_001.fastq  \
+  -2 /dir/rawdata_Illumina_L001_R2_001.fastq  \
+  --no-unal   \
+  -S minha_populacao_remapping.sam
+
+Agora vamos converter .sam para .bam, ordenar, indexar, para então visualizar nossos contigs em um software de visualização de alinhantos, 
+como Tablet, Geneious, entre outros:
+>samtools view   \
+  -@ 24   \
+  -b  \
+  minha_populacao_remapping.sam > minha_populacao_remapping.bam
+  
+>samtools sort   \
+  -@ 24   \
+  minha_populacao_remapping.bam > minha_populacao_remapping_sorted.bam
+
+>samtools index   \
+  -@ 24   \
+  minha_populacao_remapping_sorted.bam
+  
+Esse último comando gera um arquivo .bai, o qual é necessário para visualizarmos nosso remapeamento.
+
+....
+Em construção...
+Novas etapas e conversão para Jupyter em breve...
+20/05/2022
+....
