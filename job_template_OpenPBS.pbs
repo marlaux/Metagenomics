@@ -1,0 +1,12 @@
+#!/bin/sh
+
+#PBS -N blastx
+#PBS -e blastx_meu_dataset.err
+#PBS -o blastx_meu_dataset.log
+#PBS -q fila64
+#PBS -l select=1:ncpus=64
+
+/programs/blastall -p blastx -d /databases/nr -i /home/meu_user/meu_projeto/meu_dataset.fasta -o /tmp/blastx_meu_dataset -e 1e-5 -m 8 -n F -a 64
+mv /tmp/blastx_meu_dataset /home/meu_user/blastx_meu_dataset
+
+#diretórios temporários melhoram o desempenho dos processamentos nos nós do cluster
