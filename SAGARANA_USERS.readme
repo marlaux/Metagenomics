@@ -37,3 +37,15 @@ Para transferir seus arquivos do seu computador pessoal ou do laboratório para 
 scp meu_arquivo.fasta meu_user@sarapalha.icb.ufmg.br:/home/ufmg/meu_user/2sagarana/
 Para transferir seus arquivos da SARAPALHA seu computador pessoal, use o seguinte comando:
 sftp meu_user@sarapalha.icb.ufmg.br:/home/ufmg/meu_user/2sagarana/meu_arquivo.fasta . (o pontinho significa transfira 'aqui', nesse diretório atual)
+
+Para rodar um comando, por exemplo os comandos do Bowtie2 que apresentei nesse repositório, você deve editar o template PBS (disponível na main), 
+e então dispará-lo para entrar na fila:
+qsub job_template_OpenPBS.pbs
+
+para verificar o andamento do seu job, digite:
+qstat
+
+....
+Em construção...
+Novas orientações em breve...
+....
